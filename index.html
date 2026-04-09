@@ -1,0 +1,893 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>100 Day Trading Challenge – Khizar</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/js/all.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <!-- Firebase SDKs -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+        import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged }
+            from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+        import { getFirestore, doc, setDoc, getDoc, onSnapshot }
+            from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+        // ── PASTE YOUR FIREBASE CONFIG HERE ──────────────────────────────
+        // Get it from: console.firebase.google.com → Your Project → ⚙️ Settings → General → Your Apps
+        const firebaseConfig = {
+            apiKey:            "AIzaSyDzz2x5Has4erBj_ssq0eUcngIwZBsDX9g",
+            authDomain:        "trading-challenge-f86f9.firebaseapp.com",
+            projectId:         "trading-challenge-f86f9",
+            storageBucket:     "trading-challenge-f86f9.firebasestorage.app",
+            messagingSenderId: "365594936857",
+            appId:             "1:365594936857:web:d09a8365d208d5fad24c88"
+        };
+        // ─────────────────────────────────────────────────────────────────
+
+        let app, auth, db, currentUser = null;
+        let firebaseReady = false;
+
+        // Only init Firebase if config is filled in
+        if (!firebaseConfig.apiKey.includes('PASTE')) {
+            try {
+                app  = initializeApp(firebaseConfig);
+                auth = getAuth(app);
+                db   = getFirestore(app);
+                firebaseReady = true;
+
+                onAuthStateChanged(auth, user => {
+                    currentUser = user;
+                    window._currentUser = user;
+                    window._fbReady = true;
+                    updateAuthUI();
+                    if (user) loadFromFirestore(user.uid);
+                });
+            } catch(e) {
+                console.warn('Firebase init error:', e);
+            }
+        }
+
+        window.firebaseSignIn = async function() {
+            if (!firebaseReady) return showToast('Firebase not configured yet','error');
+            try {
+                const provider = new GoogleAuthProvider();
+                await signInWithPopup(auth, provider);
+            } catch(e) { showToast('Sign-in failed: ' + e.message, 'error'); }
+        };
+
+        window.firebaseSignOut = async function() {
+            if (!firebaseReady) return;
+            await signOut(auth);
+            showToast('Signed out','warning');
+        };
+
+        window.saveToFirestore = async function(data) {
+            if (!firebaseReady || !currentUser) return;
+            try {
+                await setDoc(doc(db, 'users', currentUser.uid, 'challenge', 'data'), data);
+            } catch(e) { console.warn('Firestore save error:', e); }
+        };
+
+        async function loadFromFirestore(uid) {
+            if (!firebaseReady) return;
+            try {
+                const snap = await getDoc(doc(db, 'users', uid, 'challenge', 'data'));
+                if (snap.exists()) {
+                    const data = snap.data();
+                    window._cloudData = data;
+                    window.mergeCloudData && window.mergeCloudData(data);
+                }
+            } catch(e) { console.warn('Firestore load error:', e); }
+        }
+
+        function updateAuthUI() {
+            const btn = document.getElementById('authBtn');
+            const info = document.getElementById('authInfo');
+            if (!btn) return;
+            if (currentUser) {
+                btn.innerHTML = `<i class="fas fa-sign-out-alt mr-1"></i> Sign Out`;
+                btn.onclick = window.firebaseSignOut;
+                btn.className = 'px-3 py-1.5 bg-red-900/40 hover:bg-red-800/60 text-red-400 border border-red-800/50 rounded text-xs transition flex items-center gap-1';
+                if(info) info.innerHTML = `<img src="${currentUser.photoURL||''}" class="w-6 h-6 rounded-full" onerror="this.style.display='none'"> <span class="text-xs text-slate-300">${currentUser.displayName||currentUser.email}</span> <span class="text-xs text-emerald-400"><i class="fas fa-cloud"></i> Synced</span>`;
+            } else {
+                btn.innerHTML = `<i class="fab fa-google mr-1"></i> Sign in with Google`;
+                btn.onclick = window.firebaseSignIn;
+                btn.className = 'px-3 py-1.5 bg-blue-900/40 hover:bg-blue-800/60 text-blue-400 border border-blue-800/50 rounded text-xs transition flex items-center gap-1';
+                if(info) info.innerHTML = `<span class="text-xs text-slate-500"><i class="fas fa-hdd mr-1"></i>Local storage mode</span>`;
+            }
+        }
+
+        // Expose updateAuthUI globally for re-render calls
+        window._updateAuthUI = updateAuthUI;
+        // Trigger once DOM is ready
+        document.addEventListener('DOMContentLoaded', () => { if(!firebaseReady) updateAuthUI(); });
+    </script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Inter:wght@400;600;800&display=swap');
+
+        /* THEME VARIABLES */
+        :root[data-theme="dark"] {
+            --bg-base:#0f172a; --bg-panel:rgba(30,41,59,0.75); --bg-card:#1e293b;
+            --bg-input:#0f172a; --border-color:rgba(255,255,255,0.08);
+            --text-primary:#e2e8f0; --text-secondary:#94a3b8; --text-muted:#475569;
+            --scrollbar-track:#1e293b; --scrollbar-thumb:#475569;
+            --table-head:#1e293b; --modal-bg:#1e293b;
+        }
+        :root[data-theme="light"] {
+            --bg-base:#f1f5f9; --bg-panel:rgba(255,255,255,0.88); --bg-card:#ffffff;
+            --bg-input:#f8fafc; --border-color:rgba(0,0,0,0.09);
+            --text-primary:#0f172a; --text-secondary:#475569; --text-muted:#94a3b8;
+            --scrollbar-track:#e2e8f0; --scrollbar-thumb:#94a3b8;
+            --table-head:#e2e8f0; --modal-bg:#ffffff;
+        }
+
+        body { font-family:'Inter',sans-serif; background:var(--bg-base); color:var(--text-primary); transition:background .3s,color .3s; }
+        .mono { font-family:'JetBrains Mono',monospace; }
+
+        ::-webkit-scrollbar{width:8px;height:8px;}
+        ::-webkit-scrollbar-track{background:var(--scrollbar-track);}
+        ::-webkit-scrollbar-thumb{background:var(--scrollbar-thumb);border-radius:4px;}
+
+        .glass-panel { background:var(--bg-panel); backdrop-filter:blur(10px); border:1px solid var(--border-color); transition:background .3s; }
+        .input-bg { background:var(--bg-input)!important; color:var(--text-primary)!important; border-color:var(--border-color)!important; }
+        .text-sec{color:var(--text-secondary);} .text-mut{color:var(--text-muted);}
+
+        .health-fill { transition:width .5s ease-in-out,background-color .5s ease; }
+
+        input[type="number"]::-webkit-inner-spin-button,
+        input[type="number"]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0;}
+
+        /* Theme toggle */
+        .theme-toggle{width:48px;height:26px;background:#334155;border-radius:13px;position:relative;cursor:pointer;transition:background .3s;border:none;outline:none;}
+        .theme-toggle::after{content:'';position:absolute;top:3px;left:3px;width:20px;height:20px;background:#e2e8f0;border-radius:50%;transition:transform .3s;}
+        [data-theme="light"] .theme-toggle{background:#6366f1;}
+        [data-theme="light"] .theme-toggle::after{transform:translateX(22px);}
+
+        /* Modal base */
+        .modal-base{background:var(--modal-bg);border:1px solid var(--border-color);transition:background .3s;}
+
+        /* Rules */
+        .rule-item{display:flex;align-items:flex-start;gap:10px;padding:10px 12px;border-radius:8px;border:1px solid var(--border-color);margin-bottom:8px;background:var(--bg-card);transition:all .2s;}
+        .rule-item.checked{border-color:#10b981;background:rgba(16,185,129,0.07);}
+        .rule-check{width:20px;height:20px;flex-shrink:0;border-radius:4px;border:2px solid #475569;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all .2s;margin-top:1px;}
+        .rule-item.checked .rule-check{background:#10b981;border-color:#10b981;}
+
+        /* Table actions */
+        .btn-edit{color:#60a5fa;cursor:pointer;padding:4px 8px;border-radius:4px;} .btn-edit:hover{background:rgba(96,165,250,.15);}
+        .btn-del{color:#f87171;cursor:pointer;padding:4px 8px;border-radius:4px;}  .btn-del:hover{background:rgba(248,113,113,.15);}
+
+        /* Toast */
+        #toast{position:fixed;bottom:24px;right:24px;padding:12px 20px;border-radius:10px;font-size:14px;font-weight:600;z-index:9999;display:none;box-shadow:0 4px 20px rgba(0,0,0,.4);}
+
+        /* Light mode overrides */
+        [data-theme="light"] .bg-slate-800{background:#fff!important;} [data-theme="light"] .bg-slate-900{background:#f1f5f9!important;}
+        [data-theme="light"] .bg-slate-800\/50{background:rgba(241,245,249,.8)!important;} [data-theme="light"] .bg-slate-700\/50{background:rgba(226,232,240,.8)!important;}
+        [data-theme="light"] .border-slate-700{border-color:#cbd5e1!important;} [data-theme="light"] .border-slate-600{border-color:#94a3b8!important;}
+        [data-theme="light"] .text-slate-400{color:#475569;} [data-theme="light"] .text-slate-300{color:#1e293b;}
+        [data-theme="light"] .text-slate-500{color:#64748b;} [data-theme="light"] .text-white{color:#0f172a;}
+        [data-theme="light"] .divide-slate-800>*{border-color:#e2e8f0!important;}
+        [data-theme="light"] .bg-slate-700{background:#e2e8f0!important;}
+    </style>
+</head>
+<body class="min-h-screen p-4 md:p-8">
+
+<div id="toast"></div>
+
+<!-- ===== SETUP MODAL ===== -->
+<div id="setupModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-90 hidden">
+    <div class="modal-base bg-slate-800 p-8 rounded-xl max-w-md w-full shadow-2xl">
+        <h2 class="text-2xl font-bold text-emerald-400 mb-2"><i class="fas fa-rocket mr-2"></i>New Challenge Setup</h2>
+        <p class="text-slate-400 mb-6 text-sm">Personalize your 100-day journey.</p>
+        <div class="space-y-4">
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-sm font-medium text-slate-300 mb-1">Your Name</label>
+                    <input type="text" id="userName" class="w-full input-bg border rounded p-3 focus:border-emerald-500 focus:outline-none" placeholder="e.g. Khizar">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-slate-300 mb-1">Your Age</label>
+                    <input type="number" id="userAge" class="w-full input-bg border rounded p-3 focus:border-emerald-500 focus:outline-none" placeholder="e.g. 25">
+                </div>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-slate-300 mb-1">Initial Capital ($)</label>
+                <input type="number" id="initCapital" class="w-full input-bg border rounded p-3 focus:border-emerald-500 focus:outline-none" placeholder="e.g. 1000">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-slate-300 mb-1">Daily Target %</label>
+                <input type="number" id="initialTargetPerc" class="w-full input-bg border rounded p-3 focus:border-emerald-500 focus:outline-none" placeholder="e.g. 3.0">
+                <p class="text-xs text-slate-500 mt-1">Your ideal compounding goal.</p>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-slate-300 mb-1">Start Date</label>
+                <input type="date" id="startDate" class="w-full input-bg border rounded p-3 focus:border-emerald-500 focus:outline-none">
+            </div>
+            <div class="text-center bg-slate-700/50 p-3 rounded-lg text-sm">
+                <p class="text-slate-400">100-Day Projection:</p>
+                <p id="initialProjectionDisplay" class="text-lg font-bold text-yellow-400 mono mt-1">$0.00</p>
+            </div>
+            <button onclick="startChallenge()" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 rounded transition">Initialize Protocol</button>
+        </div>
+    </div>
+</div>
+
+<!-- ===== QUIZ MODAL ===== -->
+<div id="quizModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-90 hidden">
+    <div class="modal-base bg-slate-800 p-8 rounded-xl max-w-lg w-full shadow-2xl">
+        <h2 class="text-2xl font-bold text-yellow-400 mb-2 text-center"><i class="fas fa-brain mr-2"></i>Daily Focus Challenge</h2>
+        <p class="text-slate-400 mb-6 text-sm text-center">Attempt: <span id="quizAttemptCount" class="font-bold text-yellow-300">1</span></p>
+        <div id="quizContent" class="text-center space-y-6">
+            <div class="text-xl text-slate-300">Time Left: <span id="quizTimer" class="font-bold text-red-400">10s</span></div>
+            <div class="text-5xl font-extrabold mono" id="quizQuestion"></div>
+            <input type="number" id="quizAnswer" class="w-full max-w-xs text-center input-bg border rounded p-3 text-3xl mono focus:border-yellow-500 focus:outline-none mx-auto block" placeholder="?">
+        </div>
+        <div id="quizMessage" class="text-center text-red-400 text-lg font-semibold my-4 hidden"></div>
+        <div class="mt-6 text-center flex gap-4 justify-center">
+            <button onclick="checkQuizAnswer()" id="quizSubmitBtn" class="bg-yellow-600 hover:bg-yellow-500 text-white font-bold py-3 px-8 rounded transition">Submit</button>
+            <button onclick="retryQuiz()" id="quizRetryBtn" class="bg-red-700 hover:bg-red-600 text-white font-bold py-3 px-8 rounded transition hidden"><i class="fas fa-redo mr-2"></i>Retry</button>
+            <button onclick="closeQuizModal()" id="quizCloseBtn" class="bg-slate-700 hover:bg-slate-600 text-slate-300 font-bold py-3 px-8 rounded transition hidden"><i class="fas fa-times mr-2"></i>Close</button>
+        </div>
+    </div>
+</div>
+
+<!-- ===== EDIT MODAL ===== -->
+<div id="editModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-80 hidden">
+    <div class="modal-base bg-slate-800 p-8 rounded-xl max-w-md w-full shadow-2xl">
+        <h2 class="text-xl font-bold text-blue-400 mb-4"><i class="fas fa-pencil-alt mr-2"></i>Edit Transaction – Day <span id="editDayLabel"></span></h2>
+        <div class="space-y-4">
+            <div>
+                <label class="block text-sm font-medium text-slate-300 mb-1">Net P&L ($)</label>
+                <input type="number" id="editPnL" class="w-full input-bg border rounded p-3 focus:border-blue-500 focus:outline-none">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-slate-300 mb-1">Trades Taken</label>
+                <input type="number" id="editTrades" class="w-full input-bg border rounded p-3 focus:border-blue-500 focus:outline-none">
+            </div>
+            <div class="flex gap-3 pt-2">
+                <button onclick="saveEdit()" class="flex-1 bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 rounded transition">Save Changes</button>
+                <button onclick="closeEditModal()" class="flex-1 bg-slate-700 hover:bg-slate-600 text-slate-300 font-bold py-2 rounded transition">Cancel</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ===== DELETE MODAL ===== -->
+<div id="deleteModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-80 hidden">
+    <div class="modal-base bg-slate-800 p-8 rounded-xl max-w-sm w-full shadow-2xl text-center">
+        <div class="text-5xl mb-4">⚠️</div>
+        <h2 class="text-xl font-bold text-red-400 mb-2">Delete Day <span id="deleteDayLabel"></span>?</h2>
+        <p class="text-slate-400 text-sm mb-6">This recalculates all subsequent days.</p>
+        <div class="flex gap-3">
+            <button onclick="confirmDelete()" class="flex-1 bg-red-600 hover:bg-red-500 text-white font-bold py-2 rounded">Yes, Delete</button>
+            <button onclick="closeDeleteModal()" class="flex-1 bg-slate-700 hover:bg-slate-600 text-slate-300 font-bold py-2 rounded">Cancel</button>
+        </div>
+    </div>
+</div>
+
+<!-- ===== RULES MODAL ===== -->
+<div id="rulesModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-80 hidden">
+    <div class="modal-base bg-slate-800 rounded-xl max-w-2xl w-full shadow-2xl max-h-[90vh] overflow-y-auto">
+        <div class="sticky top-0 bg-slate-800 p-6 border-b border-slate-700 flex justify-between items-center z-10">
+            <h2 class="text-xl font-bold text-emerald-400"><i class="fas fa-scroll mr-2"></i>Daily Trading Rules</h2>
+            <div class="flex gap-3 items-center">
+                <span id="rulesScore" class="text-sm font-bold text-emerald-400 mono">0/0</span>
+                <button onclick="resetRulesCheck()" class="text-xs bg-slate-700 hover:bg-slate-600 text-slate-300 px-3 py-1 rounded transition">Reset</button>
+                <button onclick="closeRulesModal()" class="text-slate-400 hover:text-white text-xl transition"><i class="fas fa-times"></i></button>
+            </div>
+        </div>
+        <div class="p-6">
+            <p class="text-slate-400 text-sm mb-4">Check each rule before you trade. Build iron-clad discipline.</p>
+            <div id="rulesChecklist"></div>
+            <div class="mt-4 p-4 rounded-lg bg-slate-900/50 border border-slate-700">
+                <p class="text-xs text-slate-500 mb-2 font-semibold uppercase tracking-wider">Add Custom Rule</p>
+                <div class="flex gap-2">
+                    <input type="text" id="newRuleInput" class="flex-1 input-bg border rounded p-2 text-sm focus:border-emerald-500 focus:outline-none" placeholder="e.g. Never trade against the trend...">
+                    <button onclick="addCustomRule()" class="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded text-sm font-bold transition">Add</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ===== REPORT MODAL ===== -->
+<div id="reportModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-80 hidden">
+    <div class="modal-base bg-slate-800 p-8 rounded-xl max-w-sm w-full shadow-2xl text-center">
+        <div class="text-5xl mb-4">📊</div>
+        <h2 class="text-xl font-bold text-purple-400 mb-2">Download Report</h2>
+        <p class="text-slate-400 text-sm mb-6">Choose your export format:</p>
+        <div class="space-y-3">
+            <button onclick="exportCSV()" class="w-full bg-green-700 hover:bg-green-600 text-white font-bold py-3 rounded transition flex items-center justify-center gap-2"><i class="fas fa-file-csv"></i> CSV (Raw Data)</button>
+            <button onclick="exportPDF()" class="w-full bg-purple-700 hover:bg-purple-600 text-white font-bold py-3 rounded transition flex items-center justify-center gap-2"><i class="fas fa-file-pdf"></i> PDF Report</button>
+            <button onclick="takeScreenshot()" class="w-full bg-blue-700 hover:bg-blue-600 text-white font-bold py-3 rounded transition flex items-center justify-center gap-2"><i class="fas fa-camera"></i> Dashboard Screenshot (PNG)</button>
+        </div>
+        <button onclick="closeReportModal()" class="mt-4 text-slate-500 hover:text-slate-300 text-sm transition">Cancel</button>
+    </div>
+</div>
+
+
+<!-- ===== MAIN APP ===== -->
+<div id="app" class="max-w-7xl mx-auto hidden">
+
+    <!-- HEADER -->
+    <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 gap-4">
+        <div>
+            <h1 class="text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-cyan-400">100 Day Spot Challenge</h1>
+            <p class="text-slate-400 text-sm mt-1">Protocol by <span id="dispUserName" class="font-semibold text-white"></span> (<span id="dispUserAge"></span>)</p>
+        </div>
+        <!-- Auth + actions -->
+        <div class="flex flex-wrap gap-2 items-center">
+            <!-- Cloud sync status -->
+            <div id="authInfo" class="flex items-center gap-2 text-slate-500 text-xs"></div>
+            <button id="authBtn" class="px-3 py-1.5 bg-blue-900/40 hover:bg-blue-800/60 text-blue-400 border border-blue-800/50 rounded text-xs transition flex items-center gap-1">
+                <i class="fab fa-google mr-1"></i> Sign in with Google
+            </button>
+            <!-- Theme -->
+            <div class="flex items-center gap-1">
+                <i class="fas fa-moon text-slate-400 text-xs"></i>
+                <button class="theme-toggle" onclick="toggleTheme()"></button>
+                <i class="fas fa-sun text-yellow-400 text-xs"></i>
+            </div>
+            <!-- Rules -->
+            <button onclick="openRulesModal()" class="px-3 py-2 bg-emerald-900/40 hover:bg-emerald-800/60 text-emerald-400 border border-emerald-800/60 rounded text-sm transition flex items-center gap-1">
+                <i class="fas fa-scroll"></i>
+                <span class="hidden md:inline text-xs">Rules</span>
+                <span id="rulesCountBadge" class="bg-slate-600 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center font-bold">0</span>
+            </button>
+            <!-- Reports -->
+            <button onclick="openReportModal()" class="px-3 py-2 bg-purple-900/40 hover:bg-purple-800/60 text-purple-400 border border-purple-800/60 rounded text-sm transition flex items-center gap-1">
+                <i class="fas fa-download"></i><span class="hidden md:inline text-xs ml-1">Reports</span>
+            </button>
+            <!-- Reset -->
+            <button onclick="confirmReset()" class="px-3 py-2 bg-red-900/30 hover:bg-red-900/50 text-red-400 border border-red-900/50 rounded text-sm transition">
+                <i class="fas fa-skull"></i>
+            </button>
+        </div>
+    </div>
+
+    <!-- RULES BANNER -->
+    <div class="glass-panel rounded-xl p-3 mb-5 border border-emerald-900/40 flex items-center gap-3 cursor-pointer hover:border-emerald-600/50 transition" onclick="openRulesModal()">
+        <i class="fas fa-check-double text-emerald-400 text-sm"></i>
+        <span class="text-sm text-slate-300">Daily rules: <span id="bannerRulesText" class="text-emerald-400 font-bold">0/0 checked</span></span>
+        <span class="ml-auto text-xs text-slate-500">Open →</span>
+    </div>
+
+    <!-- SECTION 1: STATUS CARDS -->
+    <div class="flex items-center mb-3">
+        <h2 class="text-lg font-bold">Challenge Status</h2>
+        <span class="ml-3 w-5 h-5 bg-yellow-500 text-black text-xs rounded-full flex items-center justify-center font-extrabold">1</span>
+    </div>
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+        <div class="glass-panel p-5 rounded-xl border-l-4 border-emerald-500">
+            <div class="text-sec text-xs uppercase tracking-widest font-semibold">Current Balance</div>
+            <div class="text-3xl font-bold mt-1 mono" id="dispCurrentBalance">$0.00</div>
+            <div class="text-xs mt-2" id="dispTotalPnL"><span class="text-emerald-400">+0.00%</span> Total Return</div>
+        </div>
+        <div class="glass-panel p-5 rounded-xl border-l-4 border-cyan-500">
+            <div class="text-sec text-xs uppercase tracking-widest font-semibold">Day Progress</div>
+            <div class="flex items-baseline mt-1 gap-2">
+                <div class="text-3xl font-bold mono" id="dispDay">1</div>
+                <div class="text-mut text-sm">/ 100</div>
+            </div>
+            <div class="w-full bg-slate-700 h-1.5 mt-4 rounded-full overflow-hidden">
+                <div id="dayProgressBar" class="bg-cyan-500 h-full" style="width:1%"></div>
+            </div>
+        </div>
+        <div class="glass-panel p-5 rounded-xl border-l-4 border-purple-500">
+            <div class="flex justify-between items-center mb-2">
+                <div class="text-sec text-xs uppercase tracking-widest font-semibold">Account Health</div>
+                <i class="fas fa-dumbbell text-purple-400"></i>
+            </div>
+            <div class="w-full h-8 bg-slate-900 rounded border border-slate-700 relative overflow-hidden" style="box-shadow:0 0 10px rgba(0,0,0,.5) inset">
+                <div class="absolute inset-0 z-10 flex justify-between px-2">
+                    <div class="w-px h-full bg-slate-800/50"></div><div class="w-px h-full bg-slate-800/50"></div>
+                    <div class="w-px h-full bg-slate-800/50"></div><div class="w-px h-full bg-slate-800/50"></div>
+                </div>
+                <div id="healthFill" class="health-fill h-full bg-gradient-to-r from-red-500 via-yellow-400 to-emerald-500" style="width:100%"></div>
+            </div>
+            <div class="flex justify-between text-xs mt-2 text-mut"><span>Critical</span><span>Stable</span><span>Thriving</span></div>
+        </div>
+        <div class="glass-panel p-5 rounded-xl border-l-4 border-yellow-500">
+            <div class="text-sec text-xs uppercase tracking-widest font-semibold">Mental Success</div>
+            <div class="text-3xl font-bold mt-1 mono" id="dispGameAccuracy">0.0%</div>
+            <div class="text-xs mt-2 text-mut"><span id="dispGameStatus" class="font-bold text-yellow-400">Need Practice</span> Accuracy</div>
+        </div>
+    </div>
+
+    <!-- SECTION 2: PROJECTIONS -->
+    <div class="glass-panel rounded-xl p-4 mb-6 border border-slate-700/50">
+        <h3 class="text-sm font-semibold text-slate-300 mb-3 flex items-center">
+            <span class="w-5 h-5 bg-yellow-500 text-black text-xs rounded-full flex items-center justify-center font-extrabold mr-2">2</span>
+            <i class="fas fa-chart-line mr-2 text-blue-400"></i>Future Projection
+        </h3>
+        <div class="grid grid-cols-3 gap-4 text-center">
+            <div class="bg-slate-800/50 rounded p-2">
+                <div class="text-xs text-slate-500">Initial Goal (<span id="initialGoalPerc"></span>)</div>
+                <div class="text-lg font-bold text-yellow-300 mono" id="initialGoal100">$0.00</div>
+            </div>
+            <div class="bg-slate-800/50 rounded p-2">
+                <div class="text-xs text-slate-500">Current Avg (<span id="dispAvgReturnPerc">0.0%</span>)</div>
+                <div class="text-lg font-bold text-emerald-300 mono" id="proj100Actual">$0.00</div>
+            </div>
+            <div class="bg-slate-800/50 rounded p-2">
+                <div class="text-xs text-slate-500">Day 100 Best Case</div>
+                <div class="text-xl font-bold text-emerald-300 mono" id="proj100Target">$0.00</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- SECTION 3: LOG TODAY -->
+    <div class="bg-slate-800 p-4 rounded-xl mb-6 border border-slate-700 shadow-lg">
+        <h3 class="text-sm font-bold mb-4 flex items-center">
+            <span class="w-5 h-5 bg-yellow-500 text-black text-xs rounded-full flex items-center justify-center font-extrabold mr-2">3</span>
+            <span class="bg-emerald-600 w-6 h-6 rounded flex items-center justify-center text-xs mr-2 text-white" id="inputDayNum">1</span>
+            Log Today's Trading Results
+        </h3>
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4 items-center mb-4">
+            <div class="md:col-span-2 bg-slate-900 p-2 rounded border border-slate-700">
+                <div class="text-xs text-slate-400 uppercase tracking-wider">Today's Compounding Target</div>
+                <div class="flex gap-4"><span id="currentTargetPerc" class="text-cyan-400 font-bold text-lg mono">0.0%</span><span id="currentTargetAmt" class="font-bold text-lg mono">$0.00</span></div>
+            </div>
+            <div id="gameStatusIndicator" class="md:col-span-2 text-center p-2 rounded text-sm font-semibold cursor-pointer transition hover:scale-[1.02] bg-red-800/50 text-red-300 border border-red-700" onclick="showQuizModal()">
+                <i class="fas fa-exclamation-triangle mr-2"></i> Prequiz Required! Click to start.
+            </div>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+            <div>
+                <label class="block text-xs text-slate-400 mb-1">Trades Taken</label>
+                <input type="number" id="dailyTrades" class="w-full input-bg border rounded p-2 text-sm" placeholder="0">
+            </div>
+            <div class="md:col-span-2">
+                <label class="block text-xs text-slate-400 mb-1">Net P&L ($)</label>
+                <div class="relative"><span class="absolute left-3 top-2 text-slate-500">$</span>
+                <input type="number" id="dailyPnL" class="w-full input-bg border rounded p-2 pl-7 text-sm" placeholder="0.00"></div>
+            </div>
+            <div>
+                <button onclick="submitDay()" id="submitDayBtn" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 rounded text-sm transition disabled:bg-slate-700 disabled:text-slate-500" disabled>Complete Day</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- TABLE -->
+    <div class="flex items-center justify-between mb-2">
+        <h2 class="text-lg font-bold">Trading Log</h2>
+        <span class="text-xs text-slate-500">Newest first</span>
+    </div>
+    <div class="overflow-x-auto rounded-xl border border-slate-700">
+        <table class="w-full text-sm text-left text-slate-400">
+            <thead class="text-xs text-slate-300 uppercase bg-slate-800 border-b border-slate-700">
+                <tr>
+                    <th class="px-4 py-3">Date</th><th class="px-4 py-3">Day</th>
+                    <th class="px-4 py-3">Start</th><th class="px-4 py-3">Target%</th>
+                    <th class="px-4 py-3">Achieved%</th><th class="px-4 py-3 text-right">P/L</th>
+                    <th class="px-4 py-3 text-right">End Total</th><th class="px-4 py-3 text-center">Quiz</th>
+                    <th class="px-4 py-3 text-center">Actions</th>
+                </tr>
+            </thead>
+            <tbody id="logBody" class="divide-y divide-slate-800 bg-slate-900/50"></tbody>
+        </table>
+    </div>
+
+    <!-- INFO -->
+    <div class="glass-panel rounded-xl p-6 border border-slate-700/50 mt-6">
+        <h3 class="text-lg font-bold text-yellow-500 mb-4"><i class="fas fa-info-circle mr-2"></i>Dashboard Guide</h3>
+        <ul class="space-y-3 text-slate-400 text-sm">
+            <li><strong class="text-slate-300">Challenge Status:</strong> Tracks balance, health score (last 10 days), and mental quiz accuracy.</li>
+            <li><strong class="text-slate-300">Projections:</strong> Shows initial goal vs. your actual average vs. best-case Day 100 estimate.</li>
+            <li><strong class="text-slate-300">Log Today:</strong> Pass the Prequiz first → check your rules → enter P&L → Complete Day.</li>
+            <li><strong class="text-slate-300">Edit/Delete:</strong> Click ✏️ or 🗑️ on any row. Capital recalculates automatically across all days.</li>
+            <li><strong class="text-slate-300">Cloud Sync:</strong> Sign in with Google (top right) to sync data across devices via Firebase.</li>
+        </ul>
+    </div>
+
+    <!-- ABOUT -->
+    <div class="glass-panel rounded-xl p-6 border border-slate-700/50 mt-6">
+        <h3 class="text-lg font-bold text-purple-400 mb-4"><i class="fas fa-bullseye mr-2"></i>About This Challenge</h3>
+        <div class="text-slate-400 text-sm space-y-3">
+            <p>A focused accountability tool for crypto spot traders. Beyond P&L tracking — it enforces the psychological discipline that separates profitable traders from the rest.</p>
+            <p><strong class="text-slate-300">Why 100 Days?</strong> Clear, achievable timeframe to master emotional control and compounding. The mandatory Prequiz and Rules checklist build the habits of profitable trading: focus, consistency, systematic execution.</p>
+            <p>Designed and executed by <strong class="text-white">Khizar</strong> — crypto enthusiast & developer.</p>
+            <div class="flex gap-4 pt-2">
+                <a href="https://www.linkedin.com/in/khizar226/" target="_blank" class="flex items-center bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 px-4 rounded transition text-sm"><i class="fab fa-linkedin mr-2"></i>LinkedIn</a>
+                <a href="https://www.instagram.com/khizar226" target="_blank" class="flex items-center bg-pink-600 hover:bg-pink-500 text-white font-bold py-2 px-4 rounded transition text-sm"><i class="fab fa-instagram mr-2"></i>Instagram</a>
+            </div>
+        </div>
+    </div>
+    <div class="h-20"></div>
+</div>
+
+
+<script>
+// ============================================================
+// STATE
+// ============================================================
+let appData = {
+    userName:'', userAge:0, initialCapital:0, initialTargetPerc:0,
+    startDate:null, currentCapital:0, history:[], gameHistory:[]
+};
+let currentQuiz=null, quizTimerId=null, currentDayAttemptCount=0;
+let editingDayIndex=null, deletingDayIndex=null;
+
+const DEFAULT_RULES = [
+    {id:1, text:"Confirmed trend before entering (EMA/structure)", checked:false, custom:false},
+    {id:2, text:"Stop-loss set BEFORE placing the trade", checked:false, custom:false},
+    {id:3, text:"Risk per trade ≤ 2% of current capital", checked:false, custom:false},
+    {id:4, text:"No trading in first 15 min of market open", checked:false, custom:false},
+    {id:5, text:"I am NOT emotionally compromised right now", checked:false, custom:false},
+    {id:6, text:"Checked major news & upcoming events", checked:false, custom:false},
+    {id:7, text:"Take-profit target realistic (≥ 1:2 R:R)", checked:false, custom:false},
+    {id:8, text:"No revenge trading after a loss", checked:false, custom:false},
+    {id:9, text:"Will NOT move stop-loss against myself", checked:false, custom:false},
+    {id:10, text:"Yesterday's journal entry is done", checked:false, custom:false}
+];
+let tradingRules = [];
+
+// ============================================================
+// THEME
+// ============================================================
+function toggleTheme() {
+    const html=document.documentElement;
+    const isDark=html.getAttribute('data-theme')==='dark';
+    html.setAttribute('data-theme', isDark?'light':'dark');
+    localStorage.setItem('theme_pref', isDark?'light':'dark');
+}
+
+// ============================================================
+// TOAST
+// ============================================================
+function showToast(msg, type='success') {
+    const t=document.getElementById('toast');
+    t.innerText=msg; t.style.display='block';
+    t.style.background=type==='success'?'#10b981':type==='error'?'#ef4444':'#f59e0b';
+    t.style.color='#fff';
+    clearTimeout(t._timer);
+    t._timer=setTimeout(()=>{t.style.display='none';},3000);
+}
+
+// ============================================================
+// INIT
+// ============================================================
+function init() {
+    const savedTheme=localStorage.getItem('theme_pref')||'dark';
+    document.documentElement.setAttribute('data-theme',savedTheme);
+    loadRules();
+
+    const saved=localStorage.getItem('trading100_v4');
+    if(saved){
+        appData=JSON.parse(saved);
+        showApp();
+    } else {
+        document.getElementById('setupModal').classList.remove('hidden');
+        document.getElementById('initialTargetPerc').addEventListener('input',updateSetupProjection);
+        document.getElementById('initCapital').addEventListener('input',updateSetupProjection);
+    }
+
+    // Cloud merge hook
+    window.mergeCloudData = function(cloudData) {
+        const localVersion = appData.history.length;
+        const cloudVersion = cloudData.history ? cloudData.history.length : 0;
+        if (cloudVersion > localVersion) {
+            appData = cloudData;
+            saveLocal();
+            renderDashboard(); renderTable();
+            showToast('☁️ Data synced from cloud','success');
+        }
+    };
+}
+
+function showApp(){
+    document.getElementById('setupModal').classList.add('hidden');
+    document.getElementById('app').classList.remove('hidden');
+    const cdN=appData.history.length+1;
+    const isGameSuccess=appData.gameHistory.length>0 &&
+        appData.gameHistory[appData.gameHistory.length-1].day===cdN &&
+        appData.gameHistory[appData.gameHistory.length-1].isSuccess;
+    updateGameStatus(cdN,isGameSuccess);
+    renderDashboard(); renderTable();
+}
+
+// ============================================================
+// SETUP
+// ============================================================
+function updateSetupProjection() {
+    const cap=parseFloat(document.getElementById('initCapital').value)||0;
+    const pct=parseFloat(document.getElementById('initialTargetPerc').value)||0;
+    if(cap>0&&pct>0){let p=cap;for(let i=0;i<100;i++)p*=(1+pct/100);document.getElementById('initialProjectionDisplay').innerText=formatMoney(p);}
+    else document.getElementById('initialProjectionDisplay').innerText='$0.00';
+}
+
+function startChallenge() {
+    const caps=parseFloat(document.getElementById('initCapital').value);
+    const date=document.getElementById('startDate').value;
+    const name=document.getElementById('userName').value.trim();
+    const age=parseInt(document.getElementById('userAge').value);
+    const pct=parseFloat(document.getElementById('initialTargetPerc').value);
+    if(!caps||!date||!name||isNaN(age)||isNaN(pct)) return showToast('Fill all fields correctly.','error');
+    appData={userName:name,userAge:age,initialCapital:caps,initialTargetPerc:pct,startDate:date,currentCapital:caps,history:[],gameHistory:[]};
+    currentDayAttemptCount=0;
+    saveData(); showApp();
+}
+
+// ============================================================
+// CORE
+// ============================================================
+function getTargetPercent(d){let b=appData.initialTargetPerc;if(d>80)b-=((d-80)*0.05);return Math.max(0.5,b);}
+
+function updateGameStatus(cdN,ok){
+    const gsi=document.getElementById('gameStatusIndicator');
+    const sdb=document.getElementById('submitDayBtn');
+    if(cdN>100){gsi.innerText='Challenge Complete!';gsi.className='md:col-span-2 text-center p-2 rounded text-sm font-semibold bg-slate-700/50 text-slate-400 border border-slate-600';sdb.disabled=true;return;}
+    if(!ok){
+        gsi.innerHTML='<i class="fas fa-exclamation-triangle mr-2"></i> Prequiz Required! Click to start.';
+        gsi.className='md:col-span-2 text-center p-2 rounded text-sm font-semibold cursor-pointer transition hover:scale-[1.02] bg-red-800/50 text-red-300 border border-red-700';
+        gsi.onclick=showQuizModal; sdb.disabled=true;
+    } else {
+        const att=appData.gameHistory.find(g=>g.day===cdN)?.totalAttempts||1;
+        gsi.innerHTML=`<i class="fas fa-check-circle mr-2"></i> Prequiz Done (Attempt ${att}). Log Results.`;
+        gsi.className='md:col-span-2 text-center p-2 rounded text-sm font-semibold bg-emerald-800/50 text-emerald-300 border border-emerald-700';
+        gsi.onclick=null; sdb.disabled=false;
+    }
+}
+
+function submitDay() {
+    const pnl=parseFloat(document.getElementById('dailyPnL').value);
+    const trades=parseInt(document.getElementById('dailyTrades').value)||0;
+    const cdN=appData.history.length+1;
+    const isGameOk=appData.gameHistory.length>0&&appData.gameHistory[appData.gameHistory.length-1].day===cdN&&appData.gameHistory[appData.gameHistory.length-1].isSuccess;
+    if(!isGameOk){showToast('Complete the Prequiz first!','error');return;}
+    if(isNaN(pnl)){showToast('Enter a valid P&L.','error');return;}
+    if(cdN>100){showToast('Challenge complete!','warning');return;}
+    let d=new Date(appData.startDate);d.setDate(d.getDate()+(cdN-1));
+    const sc=appData.currentCapital,tp=getTargetPercent(cdN);
+    appData.currentCapital=sc+pnl;
+    appData.history.push({day:cdN,date:d.toISOString().split('T')[0],startCap:sc,targetPerc:tp,targetAmt:sc*(tp/100),achievedPerc:(pnl/sc)*100,pnl,endCap:sc+pnl,trades});
+    currentDayAttemptCount=0;
+    document.getElementById('dailyPnL').value='';
+    document.getElementById('dailyTrades').value='';
+    saveData(); renderDashboard(); renderTable(); updateGameStatus(cdN+1,false);
+    showToast(`Day ${cdN} logged! 🎯`);
+}
+
+// ============================================================
+// EDIT / DELETE
+// ============================================================
+function openEditModal(i){editingDayIndex=i;const e=appData.history[i];document.getElementById('editDayLabel').innerText=e.day;document.getElementById('editPnL').value=e.pnl;document.getElementById('editTrades').value=e.trades;document.getElementById('editModal').classList.remove('hidden');}
+function closeEditModal(){editingDayIndex=null;document.getElementById('editModal').classList.add('hidden');}
+function saveEdit(){
+    if(editingDayIndex===null)return;
+    const np=parseFloat(document.getElementById('editPnL').value);
+    const nt=parseInt(document.getElementById('editTrades').value)||0;
+    if(isNaN(np)){showToast('Invalid P&L','error');return;}
+    const e=appData.history[editingDayIndex];
+    e.pnl=np; e.trades=nt; e.achievedPerc=(np/e.startCap)*100; e.endCap=e.startCap+np;
+    rechainFrom(editingDayIndex);
+    closeEditModal(); saveData(); renderDashboard(); renderTable();
+    showToast('Updated ✅');
+}
+
+function openDeleteModal(i){deletingDayIndex=i;document.getElementById('deleteDayLabel').innerText=appData.history[i].day;document.getElementById('deleteModal').classList.remove('hidden');}
+function closeDeleteModal(){deletingDayIndex=null;document.getElementById('deleteModal').classList.add('hidden');}
+function confirmDelete(){
+    if(deletingDayIndex===null)return;
+    appData.history.splice(deletingDayIndex,1);
+    appData.history.forEach((h,i)=>{h.day=i+1;});
+    if(appData.history.length>0){appData.history[0].startCap=appData.initialCapital;rechainFrom(0);}
+    else appData.currentCapital=appData.initialCapital;
+    const vd=new Set(appData.history.map(h=>h.day));
+    appData.gameHistory=appData.gameHistory.filter(g=>vd.has(g.day)||g.day===appData.history.length+1);
+    closeDeleteModal(); saveData(); renderDashboard(); renderTable();
+    updateGameStatus(appData.history.length+1,false);
+    showToast('Entry deleted','warning');
+}
+
+function rechainFrom(si){
+    for(let i=si;i<appData.history.length;i++){
+        const h=appData.history[i];
+        if(i>0)h.startCap=appData.history[i-1].endCap;
+        h.endCap=h.startCap+h.pnl; h.achievedPerc=(h.pnl/h.startCap)*100; h.targetAmt=h.startCap*(h.targetPerc/100);
+    }
+    if(appData.history.length>0)appData.currentCapital=appData.history[appData.history.length-1].endCap;
+}
+
+// ============================================================
+// RULES
+// ============================================================
+function loadRules(){const s=localStorage.getItem('trading_rules_v1');tradingRules=s?JSON.parse(s):JSON.parse(JSON.stringify(DEFAULT_RULES));saveRules();}
+function saveRules(){localStorage.setItem('trading_rules_v1',JSON.stringify(tradingRules));}
+function openRulesModal(){renderRulesModal();document.getElementById('rulesModal').classList.remove('hidden');}
+function closeRulesModal(){document.getElementById('rulesModal').classList.add('hidden');renderRulesBanner();}
+function renderRulesModal(){
+    const c=document.getElementById('rulesChecklist');
+    const chk=tradingRules.filter(r=>r.checked).length;
+    document.getElementById('rulesScore').innerText=`${chk}/${tradingRules.length}`;
+    c.innerHTML='';
+    tradingRules.forEach((r,i)=>{
+        const d=document.createElement('div');
+        d.className='rule-item'+(r.checked?' checked':'');
+        d.innerHTML=`<div class="rule-check" onclick="toggleRule(${i})">${r.checked?'<svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 6l3 3 5-5" stroke="white" stroke-width="2" stroke-linecap="round"/></svg>':''}</div><div class="flex-1"><p class="text-sm ${r.checked?'text-emerald-300 line-through opacity-70':'text-slate-200'}">${r.text}</p></div>${r.custom?`<button onclick="deleteRule(${i})" class="text-red-500 hover:text-red-400 text-xs ml-2"><i class="fas fa-trash"></i></button>`:''}`;
+        c.appendChild(d);
+    });
+}
+function toggleRule(i){tradingRules[i].checked=!tradingRules[i].checked;saveRules();renderRulesModal();renderRulesBanner();updateRulesCountBadge();}
+function resetRulesCheck(){tradingRules.forEach(r=>r.checked=false);saveRules();renderRulesModal();renderRulesBanner();updateRulesCountBadge();}
+function addCustomRule(){const inp=document.getElementById('newRuleInput');const t=inp.value.trim();if(!t)return showToast('Enter rule text','error');tradingRules.push({id:Date.now(),text:t,checked:false,custom:true});saveRules();inp.value='';renderRulesModal();updateRulesCountBadge();showToast('Rule added ✅');}
+function deleteRule(i){tradingRules.splice(i,1);saveRules();renderRulesModal();updateRulesCountBadge();}
+function renderRulesBanner(){const c=tradingRules.filter(r=>r.checked).length;document.getElementById('bannerRulesText').innerText=`${c}/${tradingRules.length} checked`;updateRulesCountBadge();}
+function updateRulesCountBadge(){const c=tradingRules.filter(r=>r.checked).length;const b=document.getElementById('rulesCountBadge');b.innerText=c;b.className=`text-xs rounded-full w-5 h-5 flex items-center justify-center font-bold ${c===tradingRules.length&&c>0?'bg-emerald-500':'bg-slate-600'} text-white`;}
+
+// ============================================================
+// REPORTS
+// ============================================================
+function openReportModal(){document.getElementById('reportModal').classList.remove('hidden');}
+function closeReportModal(){document.getElementById('reportModal').classList.add('hidden');}
+function exportCSV(){
+    let csv="data:text/csv;charset=utf-8,Date,Day,Start Cap,Target%,Achieved%,PnL,End Cap,Trades,Quiz Score,Attempts,Success\n";
+    appData.history.forEach(r=>{const g=appData.gameHistory.find(g=>g.day===r.day)||{};csv+=`${r.date},${r.day},${r.startCap.toFixed(2)},${r.targetPerc.toFixed(2)},${r.achievedPerc.toFixed(2)},${r.pnl.toFixed(2)},${r.endCap.toFixed(2)},${r.trades},${g.finalScore??'N/A'},${g.totalAttempts??'N/A'},${g.isSuccess!=null?(g.isSuccess?'Y':'N'):'N/A'}\n`;});
+    const link=document.createElement('a');link.setAttribute('href',encodeURI(csv));link.setAttribute('download',`${appData.userName}_trading_${new Date().toISOString().slice(0,10)}.csv`);document.body.appendChild(link);link.click();document.body.removeChild(link);
+    closeReportModal();showToast('CSV downloaded ✅');
+}
+function exportPDF(){
+    closeReportModal();showToast('Generating PDF...','warning');
+    const{jsPDF}=window.jspdf;
+    const doc=new jsPDF({orientation:'landscape',unit:'mm',format:'a4'});
+    const W=doc.internal.pageSize.getWidth();
+    doc.setFillColor(15,23,42);doc.rect(0,0,W,30,'F');
+    doc.setTextColor(52,211,153);doc.setFontSize(18);doc.setFont('helvetica','bold');doc.text('100 Day Trading Challenge – Report',14,12);
+    doc.setTextColor(148,163,184);doc.setFontSize(10);doc.setFont('helvetica','normal');
+    doc.text(`Trader: ${appData.userName} | ${new Date().toLocaleDateString()}`,14,20);
+    doc.text(`Capital: $${appData.initialCapital.toFixed(2)} → $${appData.currentCapital.toFixed(2)} | Days: ${appData.history.length}`,14,26);
+    doc.setFillColor(30,41,59);doc.rect(0,32,W,16,'F');
+    const wins=appData.history.filter(h=>h.pnl>0).length;
+    const totalR=((appData.currentCapital-appData.initialCapital)/appData.initialCapital*100).toFixed(2);
+    const avg=appData.history.length>0?(appData.history.reduce((a,h)=>a+h.achievedPerc,0)/appData.history.length).toFixed(2):0;
+    doc.setTextColor(255,255,255);doc.setFontSize(9);
+    doc.text(`Win Days: ${wins}/${appData.history.length}`,14,40);doc.text(`Total Return: ${totalR}%`,70,40);doc.text(`Avg Daily: ${avg}%`,130,40);doc.text(`P&L: $${(appData.currentCapital-appData.initialCapital).toFixed(2)}`,190,40);
+    let y=56;
+    const cols=[12,36,58,80,100,120,142,164,186,208];
+    const hdrs=['Date','Day','Start $','Target%','Achieved%','P&L','End $','Trades','Quiz','Tries'];
+    doc.setFillColor(30,41,59);doc.rect(0,y-6,W,10,'F');
+    doc.setTextColor(148,163,184);doc.setFontSize(8);doc.setFont('helvetica','bold');
+    hdrs.forEach((h,i)=>doc.text(h,cols[i],y));y+=6;
+    doc.setFont('helvetica','normal');
+    [...appData.history].reverse().forEach(r=>{
+        if(y>190){doc.addPage();y=20;}
+        const g=appData.gameHistory.find(g=>g.day===r.day)||{};
+        doc.setTextColor(r.pnl>=0?[52,211,153]:[248,113,113]);
+        const v=[r.date,`D${r.day}`,`$${r.startCap.toFixed(0)}`,`${r.targetPerc.toFixed(1)}%`,`${r.achievedPerc.toFixed(2)}%`,`${r.pnl>0?'+':''}$${r.pnl.toFixed(2)}`,`$${r.endCap.toFixed(2)}`,r.trades,g.finalScore!=null?`${g.finalScore}/5`:'N/A',g.totalAttempts??'N/A'];
+        v.forEach((val,i)=>doc.text(String(val),cols[i],y));y+=7;
+    });
+    doc.save(`${appData.userName}_Report_${new Date().toISOString().slice(0,10)}.pdf`);
+    showToast('PDF downloaded ✅');
+}
+function takeScreenshot(){
+    closeReportModal();showToast('Capturing...','warning');
+    html2canvas(document.getElementById('app'),{backgroundColor:document.documentElement.getAttribute('data-theme')==='dark'?'#0f172a':'#f1f5f9',scale:2,useCORS:true,logging:false}).then(canvas=>{
+        const link=document.createElement('a');link.download=`${appData.userName}_dashboard_${new Date().toISOString().slice(0,10)}.png`;link.href=canvas.toDataURL('image/png');document.body.appendChild(link);link.click();document.body.removeChild(link);
+        showToast('Screenshot saved ✅');
+    });
+}
+
+// ============================================================
+// SAVE / RESET
+// ============================================================
+function saveLocal(){localStorage.setItem('trading100_v4',JSON.stringify(appData));}
+function saveData(){
+    saveLocal();
+    if(window.saveToFirestore) window.saveToFirestore(appData);
+}
+function confirmReset(){if(window.confirm('Wipe all progress?')){localStorage.removeItem('trading100_v4');location.reload();}}
+
+// ============================================================
+// RENDER
+// ============================================================
+function renderDashboard(){
+    const dn=appData.history.length+1, cap=appData.currentCapital, ic=appData.initialCapital;
+    document.getElementById('dispUserName').innerText=appData.userName;
+    document.getElementById('dispUserAge').innerText=appData.userAge;
+    document.getElementById('dispCurrentBalance').innerText=formatMoney(cap);
+    document.getElementById('inputDayNum').innerText=dn;
+    document.getElementById('dispDay').innerText=Math.min(dn,100);
+    document.getElementById('dayProgressBar').style.width=`${Math.min(dn,100)}%`;
+    const ltp=getTargetPercent(dn);
+    document.getElementById('currentTargetPerc').innerText=ltp.toFixed(1)+'%';
+    document.getElementById('currentTargetAmt').innerText=formatMoney(cap*(ltp/100));
+    const tr=((cap-ic)/ic)*100;
+    document.getElementById('dispTotalPnL').innerHTML=`<span class="${tr>=0?'text-emerald-400':'text-red-400'}">${tr.toFixed(2)}%</span> Total Return`;
+    // Health
+    let h=100;
+    if(appData.history.length>0){let s=0;const lb=Math.min(appData.history.length,10);for(let i=0;i<lb;i++){const e=appData.history[appData.history.length-1-i];if(e.achievedPerc>=e.targetPerc)s+=10;else if(e.pnl>=0)s+=2;else s-=10;}h=Math.max(0,Math.min(100,50+s));}
+    const eh=document.getElementById('healthFill');eh.style.width=`${h}%`;
+    if(h>75)eh.className='health-fill h-full bg-gradient-to-r from-emerald-600 to-emerald-400 shadow-[0_0_15px_rgba(52,211,153,0.5)]';
+    else if(h>40)eh.className='health-fill h-full bg-gradient-to-r from-yellow-600 to-yellow-400';
+    else eh.className='health-fill h-full bg-gradient-to-r from-red-600 to-red-500';
+    // Quiz accuracy
+    const sg=appData.gameHistory.filter(g=>g.isSuccess).length,ta=appData.gameHistory.length;
+    const acc=ta>0?(sg/ta)*100:0;
+    document.getElementById('dispGameAccuracy').innerText=acc.toFixed(1)+'%';
+    const gse=document.getElementById('dispGameStatus');gse.classList.remove('text-emerald-400','text-yellow-400','text-red-400');
+    if(acc>=70){gse.innerText='Excellent Focus';gse.classList.add('text-emerald-400');}
+    else if(acc>=40){gse.innerText='Stable';gse.classList.add('text-yellow-400');}
+    else{gse.innerText='Need Practice';gse.classList.add('text-red-400');}
+    // Projections
+    document.getElementById('initialGoalPerc').innerText=`${appData.initialTargetPerc.toFixed(1)}%`;
+    let ig=ic;for(let i=0;i<100;i++)ig*=(1+appData.initialTargetPerc/100);document.getElementById('initialGoal100').innerText=formatMoney(ig);
+    let avg=appData.history.length>0?appData.history.reduce((a,c)=>a+c.achievedPerc,0)/appData.history.length:0;
+    document.getElementById('dispAvgReturnPerc').innerText=avg.toFixed(2)+'%';
+    const dl=100-(dn-1);
+    function proj(c,p,d){let s=c;for(let i=0;i<d;i++)s*=(1+p/100);return s;}
+    document.getElementById('proj100Actual').innerText=formatMoney(proj(cap,avg,dl));
+    document.getElementById('proj100Target').innerText=formatMoney(proj(cap,getTargetPercent(dn),dl));
+}
+
+function renderTable(){
+    const tb=document.getElementById('logBody');tb.innerHTML='';
+    [...appData.history].reverse().forEach((r,ri)=>{
+        const realIdx=appData.history.length-1-ri;
+        const tr=document.createElement('tr');tr.className='hover:bg-slate-800 transition';
+        const pc=r.pnl>=0?'text-emerald-400':'text-red-400';
+        const g=appData.gameHistory.find(g=>g.day===r.day);
+        const gd=g?`<span class="${g.isSuccess?'text-emerald-400':'text-red-400'}">${g.finalScore??0}/5 (${g.totalAttempts})</span>`:'<span class="text-slate-600">N/A</span>';
+        tr.innerHTML=`<td class="px-4 py-3 whitespace-nowrap text-slate-400">${r.date}</td><td class="px-4 py-3 font-mono text-slate-300">Day ${r.day}</td><td class="px-4 py-3 font-mono text-slate-500">${formatMoney(r.startCap)}</td><td class="px-4 py-3 font-mono text-cyan-400">${r.targetPerc.toFixed(1)}%</td><td class="px-4 py-3 font-mono ${r.achievedPerc>=r.targetPerc?'text-emerald-400 font-bold':'text-slate-400'}">${r.achievedPerc.toFixed(2)}%</td><td class="px-4 py-3 font-mono font-bold text-right ${pc}">${r.pnl>0?'+':''}${formatMoney(r.pnl)}</td><td class="px-4 py-3 font-mono text-right font-bold">${formatMoney(r.endCap)}</td><td class="px-4 py-3 text-center font-bold">${gd}</td><td class="px-4 py-3 text-center"><button class="btn-edit" onclick="openEditModal(${realIdx})" title="Edit"><i class="fas fa-pencil-alt"></i></button><button class="btn-del" onclick="openDeleteModal(${realIdx})" title="Delete"><i class="fas fa-trash"></i></button></td>`;
+        tb.appendChild(tr);
+    });
+}
+
+// ============================================================
+// QUIZ
+// ============================================================
+const QD=10;
+function genQ(){const n1=Math.floor(Math.random()*50)+10,n2=Math.floor(Math.random()*50)+10,op=Math.random()<.5?'+':'-';if(op==='+')return{question:`${n1} + ${n2}`,answer:n1+n2};const l=Math.max(n1,n2),s=Math.min(n1,n2);return{question:`${l} - ${s}`,answer:l-s};}
+function showQuizModal(){
+    const cdN=appData.history.length+1,ge=appData.gameHistory.find(g=>g.day===cdN);
+    if(ge&&ge.isSuccess)return;if(cdN>100)return;
+    ['quizAnswer'].forEach(id=>document.getElementById(id).value='');
+    document.getElementById('quizAnswer').disabled=false;
+    document.getElementById('quizTimer').innerText=`${QD}s`;
+    document.getElementById('quizQuestion').classList.remove('text-red-400','text-emerald-400');
+    document.getElementById('quizMessage').classList.add('hidden');
+    document.getElementById('quizSubmitBtn').classList.remove('hidden');
+    document.getElementById('quizRetryBtn').classList.add('hidden');
+    document.getElementById('quizCloseBtn').classList.add('hidden');
+    document.getElementById('quizModal').classList.remove('hidden');
+    currentDayAttemptCount=(ge?.totalAttempts||0)+1;
+    document.getElementById('quizAttemptCount').innerText=currentDayAttemptCount;
+    currentQuiz=genQ();document.getElementById('quizQuestion').innerText=currentQuiz.question;
+    document.getElementById('quizAnswer').focus();
+    let tl=QD;clearInterval(quizTimerId);
+    quizTimerId=setInterval(()=>{tl--;document.getElementById('quizTimer').innerText=`${tl}s`;if(tl<=0){clearInterval(quizTimerId);handleQFail('Time out!');}},1000);
+}
+function handleQFail(msg){document.getElementById('quizAnswer').disabled=true;document.getElementById('quizQuestion').classList.add('text-red-400');const qm=document.getElementById('quizMessage');qm.innerText=msg;qm.classList.remove('hidden');document.getElementById('quizSubmitBtn').classList.add('hidden');document.getElementById('quizRetryBtn').classList.remove('hidden');document.getElementById('quizCloseBtn').classList.remove('hidden');}
+function checkQuizAnswer(){
+    if(!currentQuiz)return;clearInterval(quizTimerId);
+    const ua=parseInt(document.getElementById('quizAnswer').value);
+    if(!isNaN(ua)&&ua===currentQuiz.answer){
+        document.getElementById('quizAnswer').disabled=true;document.getElementById('quizQuestion').classList.add('text-emerald-400');
+        const qm=document.getElementById('quizMessage');qm.innerText='Correct! Focus verified.';qm.classList.remove('hidden');qm.style.color='#10b981';
+        document.getElementById('quizSubmitBtn').classList.add('hidden');document.getElementById('quizRetryBtn').classList.add('hidden');document.getElementById('quizCloseBtn').classList.remove('hidden');
+        recordQR(true,5);setTimeout(closeQuizModal,1000);
+    } else {handleQFail(`Incorrect. Answer: ${currentQuiz.answer}.`);recordQR(false,0);}
+}
+function retryQuiz(){showQuizModal();}
+function closeQuizModal(){clearInterval(quizTimerId);document.getElementById('quizModal').classList.add('hidden');}
+function recordQR(ok,score){
+    const cdN=appData.history.length+1;let d=new Date(appData.startDate);d.setDate(d.getDate()+(cdN-1));
+    const ei=appData.gameHistory.findIndex(g=>g.day===cdN);
+    const ne={day:cdN,date:d.toISOString().split('T')[0],finalScore:ok?score:0,totalAttempts:currentDayAttemptCount,isSuccess:ok};
+    if(ei!==-1)appData.gameHistory[ei]=ne;else appData.gameHistory.push(ne);
+    saveData();renderDashboard();updateGameStatus(cdN,ok);
+}
+
+// ============================================================
+// UTILS
+// ============================================================
+function formatMoney(n){return new Intl.NumberFormat('en-US',{style:'currency',currency:'USD'}).format(n);}
+document.addEventListener('keydown',e=>{if(e.key==='Enter'&&!document.getElementById('quizModal').classList.contains('hidden')&&!document.getElementById('quizSubmitBtn').classList.contains('hidden'))checkQuizAnswer();});
+
+init();
+</script>
+</body>
+</html>
